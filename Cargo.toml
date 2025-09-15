@@ -1,0 +1,12 @@
+[package]
+name = "dts-reverser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lalrpop-util = {version = "*", features = ["lexer"]}
+logos = {version = "*", features = ["logos-derive"]}
+bimap = "*"
+
+[build-dependencies]
+lalrpop = "*"

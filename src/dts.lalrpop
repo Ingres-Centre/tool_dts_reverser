@@ -1,0 +1,60 @@
+use crate::{ast, lexer};
+
+grammar<'input>(input: &'input str);
+
+extern {
+    type Location = usize;
+    type Error = lexer::LexicalError<'input>;
+
+    enum lexer::Token<'input> {
+        Eq => lexer::Token::Eq,
+        Colon => lexer::Token::Colon,
+        Semicolon => lexer::Token::Semicolon,
+        Comma => lexer::Token::Comma,
+        Period => lexer::Token::Period,
+
+        OpenPth => lexer::Token::OpenPth,
+        ClosePth => lexer::Token::ClosePth,
+        OpenBracket => lexer::Token::OpenBracket,
+        CloseBracket => lexer::Token::CloseBracket,
+        OpenBrace => lexer::Token::OpenBrace,
+        CloseBrace => lexer::Token::CloseBrace,
+        OpenAngle => lexer::Token::OpenAngle,
+        CloseAngle => lexer::Token::CloseAngle,
+
+        Boolean => lexer::Token::Boolean(<bool>),
+        Byte => lexer::Token::Byte(<u8>),
+        Integer => lexer::Token::Integer(<i64>),
+        String => lexer::Token::String(<&'input str>),
+
+        Ident => lexer::Token::Ident(<&'input str>),
+        Header => lexer::Token::Header(<u32>),
+    }
+}
+
+CommaList<T>: Vec<T> = <first:T> <mut rest:(Comma <T>)*> => { rest.insert(0, first); rest };
+
+StmtList<T>: Vec<T> = <v:(<T> Semicolon)*> => <>;
+
+Branch: ast::Branch<'input> = <i:Ident> OpenBrace <st:StmtList<BranchEntryStmt>> CloseBrace => ast::Branch { ident: i, entries: st };
+KeyValue: (&'input str, ast::Value<'input>) = <key:Ident> Eq <value:ValueLike> => (key, value);
+
+#[inline]
+ValueLike: ast::Value<'input> = {
+    OpenAngle <Integer*> CloseAngle => ast::Value::IntegerList(<>),
+    OpenBracket <Byte*> CloseBracket => ast::Value::ByteList(<>),
+    CommaList<String> => ast::Value::StringList(<>),
+};
+
+BranchEntryStmt: ast::BranchEntry<'input> = {
+    Branch => ast::BranchEntry::Branch(<>),
+    Ident => ast::BranchEntry::Key(<>),
+    KeyValue => ast::BranchEntry::KeyValue { key: <>.0, value: <>.1 },
+};
+
+pub File: ast::File<'input> = StmtList<FileEntryStmt>;
+
+FileEntryStmt: ast::FileEntry<'input> = {
+    Header => ast::FileEntry::Header(ast::Header { version: <> }),
+    Branch => ast::FileEntry::Branch(<>),
+};
