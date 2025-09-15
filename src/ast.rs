@@ -16,14 +16,14 @@ pub struct Branch<'a> {
 pub enum BranchEntry<'a> {
     Branch(Branch<'a>),
     Key(&'a str),
-    KeyValue { key: &'a str, value: Value<'a> },
+    KeyValue { key: &'a str, value: Value },
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Value<'a> {
+pub enum Value {
     IntegerList(Vec<i64>),
     ByteList(Vec<u8>),
-    StringList(Vec<&'a str>),
+    StringList(Vec<String>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -41,7 +41,7 @@ impl<'a> Serialize<'a> for Header {
     }
 }
 
-impl<'a> Serialize<'a> for Value<'a> {
+impl<'a> Serialize<'a> for Value {
     fn serialize(&'a self, _: usize) -> String {
         match &self {
             Value::IntegerList(inner) => {

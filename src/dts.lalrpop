@@ -37,13 +37,13 @@ CommaList<T>: Vec<T> = <first:T> <mut rest:(Comma <T>)*> => { rest.insert(0, fir
 StmtList<T>: Vec<T> = <v:(<T> Semicolon)*> => <>;
 
 Branch: ast::Branch<'input> = <i:Ident> OpenBrace <st:StmtList<BranchEntryStmt>> CloseBrace => ast::Branch { ident: i, entries: st };
-KeyValue: (&'input str, ast::Value<'input>) = <key:Ident> Eq <value:ValueLike> => (key, value);
+KeyValue: (&'input str, ast::Value) = <key:Ident> Eq <value:ValueLike> => (key, value);
 
 #[inline]
-ValueLike: ast::Value<'input> = {
+ValueLike: ast::Value = {
     OpenAngle <Integer*> CloseAngle => ast::Value::IntegerList(<>),
     OpenBracket <Byte*> CloseBracket => ast::Value::ByteList(<>),
-    CommaList<String> => ast::Value::StringList(<>),
+    CommaList<String> => ast::Value::StringList(<>.iter().map(|str| str.to_string()).collect::<Vec<String>>()),
 };
 
 BranchEntryStmt: ast::BranchEntry<'input> = {

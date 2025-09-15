@@ -69,7 +69,9 @@ pub fn second_pass_walker<'a>(
                 key,
                 value: match &value {
                     Value::IntegerList(integers) => {
-                        if !args.iter().any(|arg| key.contains(arg.as_str())) || *key == "phandle" {
+                        if *key == "phandle" {
+                            Value::IntegerList(integers.iter().map(|_| 0).collect())
+                        } else if !args.iter().any(|arg| key.contains(arg.as_str())) {
                             value.clone()
                         } else {
                             let numbers_str: Vec<String> =
@@ -89,8 +91,8 @@ pub fn second_pass_walker<'a>(
                                     .iter()
                                     .map(|i| {
                                         map.get_by_right(i)
-                                            .map(|str| str.as_str())
-                                            .unwrap_or("##UNKNOWN##")
+                                            .cloned()
+                                            .unwrap_or(format!("{:#x}", i))
                                     })
                                     .collect(),
                             )
@@ -141,7 +143,6 @@ fn main() {
             _ => println!("{:?}", e),
         },
         Ok(mut res) => {
-
             let mut ident_phandle: BiMap<String, i64> = BiMap::new();
 
             for entry in &res {
