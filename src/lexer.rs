@@ -23,15 +23,7 @@ pub struct LexicalError<'a> {
 
 impl<'a> std::fmt::Display for LexicalError<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let line = self.input[..self.span.start]
-            .chars()
-            .filter(|&ch| ch == '\n')
-            .count()
-            + 1;
-
-        let column = self.span.start - self.input[..self.span.start].rfind("\n").unwrap_or(0);
-
-        let position = format!("line {}, column {}", line, column);
+        let position = format_position(self.input, self.span.clone());
 
         match &self.kind {
             LexicalErrorKind::InvalidToken => write!(
@@ -39,26 +31,44 @@ impl<'a> std::fmt::Display for LexicalError<'a> {
                 "Invalid token \"{}\" at {}",
                 &self.input[self.span.start..self.span.end],
                 position
-            )?,
+            ),
             LexicalErrorKind::InvalidInteger(inner) => write!(
                 f,
                 "Invalid number {} at {}: {}",
                 &self.input[self.span.start..self.span.end],
                 position,
-                match inner.kind() {
-                    IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => "overflow",
-                    _ => "unknown",
-                }
-            )?,
-        };
+                integer_error_reason(inner)
+            ),
+        }
+    }
+}
 
-        Ok(())
+fn format_position(input: &str, span: Span) -> String {
+    let (line, column) = position_from_span(input, span);
+    format!("line {}, column {}", line, column)
+}
+
+fn position_from_span(input: &str, span: Span) -> (usize, usize) {
+    let start = span.start.min(input.len());
+    let prefix = &input[..start];
+    let line = prefix.chars().filter(|&ch| ch == '\n').count() + 1;
+    let column = start - prefix.rfind('\n').unwrap_or(0);
+    (line, column)
+}
+
+fn integer_error_reason(error: &ParseIntError) -> &'static str {
+    match error.kind() {
+        IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => "overflow",
+        _ => "unknown",
     }
 }
 
 fn string_from_lexer<'a>(lex: &mut logos::Lexer<'a, Token<'a>>) -> &'a str {
-    let slice = lex.slice();
-    &slice[1..slice.len() - 1]
+    trim_quotes(lex.slice())
+}
+
+fn trim_quotes(input: &str) -> &str {
+    &input[1..input.len() - 1]
 }
 
 #[derive(Clone, Debug, PartialEq, Logos)]

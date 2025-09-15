@@ -1,6 +1,6 @@
 use crate::ast::{Branch, BranchEntry, FileEntry, Serialize, Value};
 use bimap::{BiHashMap, BiMap};
-use lalrpop_util::{lalrpop_mod, ParseError};
+use lalrpop_util::{ParseError, lalrpop_mod};
 
 lalrpop_mod!(
     #[allow(clippy::ptr_arg)]
@@ -20,19 +20,41 @@ pub fn parse(
     parser.parse(data, lexer)
 }
 
-pub fn first_pass_walker(map: &mut BiMap<String, i64>, parent: &str, branch: &Branch) {
-    let me = if parent.is_empty() {
-        branch.ident.to_string()
+fn build_child_path(parent: &str, ident: &str) -> String {
+    if parent.is_empty() {
+        ident.to_string()
     } else if parent == "/" {
-        format!("{}{}", parent, branch.ident)
+        format!("{}{}", parent, ident)
     } else {
-        format!("{}/{}", parent, branch.ident)
-    };
+        format!("{}/{}", parent, ident)
+    }
+}
+
+fn should_transform_key(key: &str, args: &[String]) -> bool {
+    args.iter().any(|arg| key.contains(arg.as_str()))
+}
+
+fn integer_preview(values: &[i64], limit: usize) -> String {
+    let joined = values
+        .iter()
+        .map(|value| format!("0x{:x}", value))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    if joined.len() <= limit {
+        joined
+    } else {
+        joined[..limit].to_string()
+    }
+}
+
+pub fn first_pass_walker(map: &mut BiMap<String, i64>, parent: &str, branch: &Branch) {
+    let current_path = build_child_path(parent, branch.ident);
 
     for entry in &branch.entries {
         match &entry {
             BranchEntry::Branch(child) => {
-                first_pass_walker(map, &me, child);
+                first_pass_walker(map, &current_path, child);
             }
             BranchEntry::KeyValue { key, value } => {
                 if *key != "phandle" {
@@ -41,7 +63,7 @@ pub fn first_pass_walker(map: &mut BiMap<String, i64>, parent: &str, branch: &Br
 
                 match &value {
                     Value::IntegerList(integers) => {
-                        map.insert(me.clone(), *integers.first().unwrap());
+                        map.insert(current_path.clone(), *integers.first().unwrap());
                     }
                     _ => unreachable!(),
                 }
@@ -56,56 +78,38 @@ pub fn second_pass_walker<'a>(
     branch: &mut Branch<'a>,
     args: &[String],
 ) {
-    let entries: Vec<_> = branch
-        .entries
-        .iter()
-        .map(|entry| match entry {
-            BranchEntry::Branch(child) => {
-                let mut child = child.clone();
-                second_pass_walker(map, &mut child, args);
-                BranchEntry::Branch(child)
-            }
-            BranchEntry::KeyValue { key, value } => BranchEntry::KeyValue {
-                key,
-                value: match &value {
-                    Value::IntegerList(integers) => {
-                        if *key == "phandle" {
-                            Value::IntegerList(integers.iter().map(|_| 0).collect())
-                        } else if !args.iter().any(|arg| key.contains(arg.as_str())) {
-                            value.clone()
-                        } else {
-                            let numbers_str: Vec<String> =
-                                integers.iter().map(|i| format!("0x{:x}", i)).collect();
-                            let numbers_str = numbers_str.join(", ");
-
-                            let norm = if numbers_str.len() > 25 {
-                                &numbers_str[0..25]
-                            } else {
-                                &numbers_str
-                            };
-
-                            println!("{:25}: {}", key, norm);
-
-                            Value::StringList(
-                                integers
-                                    .iter()
-                                    .map(|i| {
-                                        map.get_by_right(i)
-                                            .cloned()
-                                            .unwrap_or(format!("{:#x}", i))
-                                    })
-                                    .collect(),
-                            )
-                        }
+    for entry in branch.entries.iter_mut() {
+        match entry {
+            BranchEntry::Branch(child) => second_pass_walker(map, child, args),
+            BranchEntry::KeyValue { key, value } => match value {
+                Value::IntegerList(integers) => {
+                    if *key == "phandle" {
+                        integers.iter_mut().for_each(|value| *value = 0);
+                        continue;
                     }
-                    value => (*value).clone(),
-                },
-            },
-            v => v.clone(),
-        })
-        .collect();
 
-    branch.entries = entries;
+                    if !should_transform_key(key, args) {
+                        continue;
+                    }
+
+                    println!("{:25}: {}", key, integer_preview(integers, 25));
+
+                    let replacements = integers
+                        .iter()
+                        .map(|number| {
+                            map.get_by_right(number)
+                                .cloned()
+                                .unwrap_or(format!("{:#x}", number))
+                        })
+                        .collect();
+
+                    *value = Value::StringList(replacements);
+                }
+                _ => continue,
+            },
+            _ => continue,
+        }
+    }
 }
 fn main() {
     let args = std::env::args().collect::<Vec<_>>();

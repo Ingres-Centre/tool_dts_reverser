@@ -35,6 +35,18 @@ pub trait Serialize<'a> {
     fn serialize(&'a self, level: usize) -> String;
 }
 
+fn indent(level: usize) -> String {
+    "\t".repeat(level)
+}
+
+fn join_map<I, F>(iter: I, f: F, separator: &str) -> String
+where
+    I: IntoIterator,
+    F: FnMut(I::Item) -> String,
+{
+    iter.into_iter().map(f).collect::<Vec<_>>().join(separator)
+}
+
 impl<'a> Serialize<'a> for Header {
     fn serialize(&'a self, _: usize) -> String {
         format!("/dts-v{}/;\n\n", self.version)
@@ -43,18 +55,17 @@ impl<'a> Serialize<'a> for Header {
 
 impl<'a> Serialize<'a> for Value {
     fn serialize(&'a self, _: usize) -> String {
-        match &self {
+        match self {
             Value::IntegerList(inner) => {
-                let strings: Vec<String> = inner.iter().map(|i| format!("{:#04x}", i)).collect();
-                format!("<{}>", strings.join(" "))
+                let contents = join_map(inner.iter(), |value| format!("{:#04x}", value), " ");
+                format!("<{}>", contents)
             }
             Value::ByteList(inner) => {
-                let strings: Vec<String> = inner.iter().map(|i| format!("{:02x}", i)).collect();
-                format!("[{}]", strings.join(" "))
+                let contents = join_map(inner.iter(), |value| format!("{:02x}", value), " ");
+                format!("[{}]", contents)
             }
             Value::StringList(inner) => {
-                let strings: Vec<String> = inner.iter().map(|i| format!("\"{}\"", i)).collect();
-                strings.join(", ")
+                join_map(inner.iter(), |value| format!("\"{}\"", value), ", ")
             }
         }
     }
@@ -65,15 +76,10 @@ impl<'a> Serialize<'a> for BranchEntry<'a> {
         match &self {
             BranchEntry::Branch(inner) => inner.serialize(level),
             BranchEntry::Key(ident) => {
-                format!("{}{};\n", "\t".repeat(level), ident)
+                format!("{}{};\n", indent(level), ident)
             }
             BranchEntry::KeyValue { key, value } => {
-                format!(
-                    "{}{} = {};\n",
-                    "\t".repeat(level),
-                    key,
-                    value.serialize(level)
-                )
+                format!("{}{} = {};\n", indent(level), key, value.serialize(level))
             }
         }
     }
@@ -81,18 +87,15 @@ impl<'a> Serialize<'a> for BranchEntry<'a> {
 
 impl<'a> Serialize<'a> for Branch<'a> {
     fn serialize(&'a self, level: usize) -> String {
-        let entries: Vec<String> = self
-            .entries
-            .iter()
-            .map(|v| v.serialize(level + 1))
-            .collect();
+        let entries = join_map(self.entries.iter(), |entry| entry.serialize(level + 1), "");
+        let indent = indent(level);
 
         format!(
             "{}{} {{\n{}{}}};\n",
-            "\t".repeat(level),
+            indent.clone(),
             self.ident,
-            entries.join(""),
-            "\t".repeat(level)
+            entries,
+            indent
         )
     }
 }
